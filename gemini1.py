@@ -11,7 +11,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # ⚙️ CONFIGURATION
 # ==========================================
-BOT_TOKEN = "8808786725:AAFqLW2eQL5TsueEUBijo90lX1s5HTruaVo"
+BOT_TOKEN = "8808786725:AAHOE15FWL1IwKRZU83Bk93YNJsHv5Qb8bo"
 ADMIN_ID = "8808786725" 
 BOT_USERNAME = "ecotpsbot"
 BASE_URL = "https://looters.shop/jio_gemini/"
