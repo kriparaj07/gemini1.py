@@ -1,4 +1,24 @@
-# ====================================================
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+
+# Web Server Dummy Port Bind
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is Running Safely!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
+# Background Thread me Web Server Start Karein
+threading.Thread(target=run_web_server, daemon=True).start()
+
+# Aapka Normal/Safe Code Yahan Aayega
+print("Main Script Started Safely...")# ====================================================
 #               MADE BY XPILIOT
 #     PRIME HOSTING SERVER v4.5 (RAILWAY READY)
 # ====================================================
@@ -16,17 +36,15 @@ from telebot import TeleBot, types
 import qrcode
 
 # ==================== RAILWAY CONFIGURATION ====================
-# Railway Variables se Token aur IDs uthayega, agar nahi mile toh default use karega (Local ke liye)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8782806153:AAGz3-X2NLhSjVVyXB-llODBBpV-vcKNHE8")
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "echosting_bot")         # Bot username updated
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "echosting_bot")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 8084694525))
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")                  # Admin username removed
-CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "")              # Channel username removed
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "")
 
 HOST_DIR = "hosted_files"
 MAX_LOG_SIZE_MB = 5
 
-# Default Values (User can change via Bot)
 config = {
     "upi_id": "raj42006@fam",
     "price_amount": 99,
@@ -37,7 +55,6 @@ config = {
 
 os.makedirs(HOST_DIR, exist_ok=True)
 
-# ⚡ Multi-Threaded Bot Instance
 bot = TeleBot(BOT_TOKEN, threaded=True, num_threads=50)
 
 # ==================== DATABASE SETUP ====================
@@ -52,14 +69,12 @@ def get_db():
 def init_db():
     conn = get_db()
     cursor = conn.cursor()
-    # USERS TABLE
+    # USERS TABLE (Referral columns removed)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             is_prime INTEGER DEFAULT 0,
-            prime_expire TEXT DEFAULT NULL,
-            referred_by INTEGER DEFAULT NULL,
-            referral_count INTEGER DEFAULT 0
+            prime_expire TEXT DEFAULT NULL
         )
     """)
     # BOTS TABLE
@@ -91,7 +106,6 @@ def init_db():
         )
     """)
     
-    # Insert default config values if not exists
     default_config = {
         "upi_id": "raj42006@fam",
         "price_amount": "99",
@@ -122,28 +136,15 @@ def load_config():
             else:
                 config[row['key']] = row['value']
 
-# Load config on start
 load_config()
 
 # ==================== HELPER FUNCTIONS ====================
-def register_user(user_id, ref_by=None):
+def register_user(user_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     if not cursor.fetchone():
-        if ref_by and ref_by != user_id:
-            cursor.execute("INSERT INTO users (user_id, referred_by) VALUES (?, ?)", (user_id, ref_by))
-            cursor.execute("UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?", (ref_by,))
-            cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (ref_by,))
-            ref_row = cursor.fetchone()
-            if ref_row and ref_row['referral_count'] % 3 == 0:
-                add_prime_days(ref_by, 1)
-                try:
-                    bot.send_message(ref_by, "🎉 **Referral Bonus!** Received 1 day of FREE Prime VIP access.")
-                except Exception:
-                    pass
-        else:
-            cursor.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+        cursor.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
         conn.commit()
     conn.close()
 
@@ -274,11 +275,10 @@ def main_menu_keyboard(user_id):
     )
     markup.add(types.InlineKeyboardButton("💎 PRIME VIP ZONE 🌟", callback_data="prime_zone"))
     markup.add(
-        types.InlineKeyboardButton("👥 Referral Program", callback_data="referral_info"),
-        types.InlineKeyboardButton("🎟️ Redeem Coupon", callback_data="claim_code")
+        types.InlineKeyboardButton("🎟️ Redeem Coupon", callback_data="claim_code"),
+        types.InlineKeyboardButton("📊 Server Status", callback_data="server_stats")
     )
     markup.add(
-        types.InlineKeyboardButton("📊 Server Status", callback_data="server_stats"),
         types.InlineKeyboardButton("❓ Help & Guide", callback_data="help_guide")
     )
     if user_id == ADMIN_ID:
@@ -316,16 +316,7 @@ def admin_panel_keyboard():
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     user_id = message.from_user.id
-    ref_by = None
-    
-    text_args = message.text.split()
-    if len(text_args) > 1 and text_args[1].startswith("ref_"):
-        try:
-            ref_by = int(text_args[1].replace("ref_", ""))
-        except ValueError:
-            pass
-
-    register_user(user_id, ref_by)
+    register_user(user_id)
     is_prime = is_prime_user(user_id)
     user_name = message.from_user.first_name or "User"
 
@@ -509,27 +500,6 @@ def callback_handler(call):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu"))
         send_or_edit(chat_id, "📥 **Please send your `.py` Python file directly into this chat.**", markup, msg_id)
-
-    elif call.data == "referral_info":
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-        ref_count = row['referral_count'] if row else 0
-        conn.close()
-
-        ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
-        msg = (
-            f"👥 **Referral Program**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"Invite friends to get FREE Prime VIP!\n\n"
-            f"🔗 **Your Link:**\n`{ref_link}`\n\n"
-            f"📊 **Referrals:** `{ref_count}` user(s)\n"
-            f"🎁 **Reward:** 1 day FREE Prime VIP per 3 invites."
-        )
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu"))
-        send_or_edit(chat_id, msg, markup, msg_id)
 
     elif call.data == "server_stats":
         cpu_info = "Not Available (Android)"
@@ -836,97 +806,4 @@ def show_pip_action(chat_id, bot_id, msg_id):
     try:
         res = subprocess.run([sys.executable, "-m", "pip", "list"], capture_output=True, text=True)
         packages = res.stdout[:3000]
-        msg = f"📋 **Installed Python Packages:**\n```\n{packages}\n```"
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🔙 Back to Management", callback_data=f"manage_{bot_id}"))
-        send_or_edit(chat_id, msg, markup, msg_id)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Error: `{str(e)}`")
-
-def delete_bot_action(chat_id, bot_id, msg_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT filepath, logpath, pid FROM hosted_bots WHERE id = ?", (bot_id,))
-    b = cursor.fetchone()
-
-    if b:
-        if b['pid'] and is_process_alive(b['pid']):
-            try:
-                os.kill(b['pid'], 9)
-            except Exception:
-                pass
-        if os.path.exists(b['filepath']): 
-            try: os.remove(b['filepath'])
-            except Exception: pass
-        if os.path.exists(b['logpath']): 
-            try: os.remove(b['logpath'])
-            except Exception: pass
-
-    cursor.execute("DELETE FROM hosted_bots WHERE id = ?", (bot_id,))
-    conn.commit()
-    conn.close()
-
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 My Hosted Bots", callback_data="my_bots"))
-    send_or_edit(chat_id, "🗑️ **Bot script and logs deleted successfully.**", markup, msg_id)
-
-# ==================== USER STEP PROCESSORS ====================
-def process_claim_code(message):
-    if not message.text:
-        bot.reply_to(message, "❌ **Invalid input!** Please send text coupon code.")
-        return
-    code_input = message.text.strip()
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM prime_codes WHERE code = ?", (code_input,))
-    row = cursor.fetchone()
-
-    if row:
-        add_prime_days(message.from_user.id, row['days'])
-        cursor.execute("DELETE FROM prime_codes WHERE code = ?", (code_input,))
-        conn.commit()
-        bot.reply_to(message, f"🎉 **Activated {row['days']} days of Prime VIP!**")
-    else:
-        bot.reply_to(message, "❌ **Invalid code!**")
-    conn.close()
-
-def process_gift_prime(message):
-    if not message.text or not message.text.isdigit():
-        bot.reply_to(message, "❌ **Invalid Telegram Numeric ID.**")
-        return
-    try:
-        friend_id = int(message.text.strip())
-        add_prime_days(friend_id, 7)
-        bot.reply_to(message, f"🎁 **Gifted 7 days Prime VIP to `{friend_id}`!**")
-    except Exception:
-        bot.reply_to(message, "❌ **An error occurred.**")
-
-@bot.message_handler(commands=['genkey'])
-def gen_key_cmd(message):
-    if message.from_user.id != ADMIN_ID: return
-    try:
-        days = int(message.text.split()[1])
-    except Exception:
-        days = 30
-    code = "PRIME-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO prime_codes (code, days) VALUES (?, ?)", (code, days))
-    conn.commit()
-    conn.close()
-    bot.reply_to(message, f"🎟️ **Prime Code Generated:**\n`{code}` ({days} Days)", parse_mode="Markdown")
-
-# ==================== HIGH PERFORMANCE POLLING ====================
-if __name__ == '__main__':
-    print("🎬 Made by Xpiliot")
-    print("⚡ Ultra-Fast Prime Hosting Server v4.5 Running...")
-    print(f"✅ Bot Username: @{BOT_USERNAME}")
-    print(f"✅ Admin ID: {ADMIN_ID}")
-    print(f"✅ UPI ID: {config['upi_id']}")
-    print(f"✅ Price: ₹{config['price_amount']} / {config['price_days']} Days")
-    
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=10,
-        long_polling_timeout=5
-    )
+        msg = f"📋 **Installed Python Packages:**\n```\n{packages}\n
